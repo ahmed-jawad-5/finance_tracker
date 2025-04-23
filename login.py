@@ -48,6 +48,7 @@ class signup:
         self.var_pass = StringVar()
         self.var_confpass = StringVar()
         self.terms_var = IntVar()
+    
 
         # Background
         try:
