@@ -29,16 +29,29 @@ BUTTON_BG = DARK_BUTTON_BG
 BUTTON_FG = DARK_BUTTON_FG
 
 class FinanceTrackerApp:
-    def __init__(self, root):
+    def __init__(self, root, user_id=None):
         self.root = root
-        self.root.title("Finance Tracker")
+        self.user_id = user_id  # Store the user ID
+        self.root.title(f"Finance Tracker - User {user_id}" if user_id else "Finance Tracker")
         self.root.geometry("900x600")
         self.root.resizable(True, True)
+        
+        # Add a theme toggle variable
         self.dark_theme = tk.BooleanVar(value=True)  # Start with dark theme
+        
+        # Initialize database with user_id
+        self.db = DatabaseHandler(user_id)
+
+        # Apply initial theme
         self.set_theme()
+        
         self.db = DatabaseHandler()
         self.create_widgets()
+        
+        # Move this line after create_widgets so that self.tree exists
         self.load_transactions()
+        
+        # Check for budget alerts on startup
         self.root.after(1000, self.check_alerts)        
     
     def create_widgets(self):
