@@ -12,9 +12,17 @@ from pathlib import Path
 
 def main():
     root = Tk()
+    # Check if any users exist in the database
     app = window(root)
+    if app.check_users_exist():
+        # Users exist, start with login window
+        pass
+    else:
+        # No users, start with signup window
+        root.destroy()
+        root = Tk()
+        app = signup(root)
     root.mainloop()
-
 class signup:
     def __init__(self, root):
         self.root = root
@@ -146,20 +154,21 @@ class signup:
         )
         sign_Button.place(x=230, y=430, width=150, height=40)
 
-        # Login Button
-        lg_btn = Button(
-            frame,
-            text='Already have an account? Login',
-            command=self.open_login,
-            font=('times new roman', 10, 'bold'),
-            border=3,
-            relief=RIDGE,
-            fg=btn_fg,
-            bg=btn_bg,
-            activebackground=frame_bg,
-            activeforeground=text_fg
-        )
-        lg_btn.place(x=170, y=490, width=220, height=20)
+        # Login Button (only shown if users exist)
+        if self.check_users_exist():
+            lg_btn = Button(
+                frame,
+                text='Already have an account? Login',
+                command=self.open_login,
+                font=('times new roman', 10, 'bold'),
+                border=3,
+                relief=RIDGE,
+                fg=btn_fg,
+                bg=btn_bg,
+                activebackground=frame_bg,
+                activeforeground=text_fg
+            )
+            lg_btn.place(x=170, y=490, width=220, height=20)
 
     def open_login(self):
         self.root.destroy()
@@ -223,6 +232,20 @@ class signup:
                     "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'your_password';\n" +
                     "FLUSH PRIVILEGES;"
                 )
+
+    def check_users_exist(self):
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(f"USE {self.db_name}")
+            cursor.execute("SELECT COUNT(*) FROM users")
+            count = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+            return count > 0
+        except mysql.connector.Error:
+            # If any error occurs, assume no users exist
+            return False
 
     def validate_email(self, email):
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -325,6 +348,9 @@ class window:
         self.db_password = 'Ahmed@1220'
         self.db_name = 'user_registration'
 
+        # Get the first user's info
+        self.user_info = self.get_first_user()
+
         # Theme colors
         frame_bg = "#1e1e1e"       
         text_fg = "#FFD700"        
@@ -358,26 +384,16 @@ class window:
         log_text = Label(frame, text="Login", font=('times new roman', 20, 'bold'), fg=text_fg, bg=frame_bg)
         log_text.place(x=140, y=110)
 
-        username = Label(frame, text='Username', font=('times new roman', 14, 'bold'), fg=text_fg, bg=frame_bg)
-        username.place(x=60, y=160)
-
-        self.user = Entry(frame, font=('times new roman', 14), bg=entry_bg, fg=entry_fg, insertbackground='white')
-        self.user.place(x=20, y=190, width=300)
-
+        # Show welcome message with user's name
+        if self.user_info:
+            welcome_text = Label(frame, text=f"Welcome {self.user_info[1]}!", font=('times new roman', 14, 'bold'), fg=text_fg, bg=frame_bg)
+            welcome_text.place(x=60, y=160)
+        
         password = Label(frame, text='Password', font=('times new roman', 14, 'bold'), fg=text_fg, bg=frame_bg)
         password.place(x=60, y=260)
 
         self.passw = Entry(frame, font=('times new roman', 14), bg=entry_bg, fg=entry_fg, show='*', insertbackground='white')
         self.passw.place(x=20, y=290, width=300)
-
-        try:
-            img2 = Image.open("E:/program to warr gya/codes/python/python_projects/tkinter/useric.png")
-            img2 = img2.resize((48, 48), Resampling.LANCZOS)
-            self.photoimg2 = ImageTk.PhotoImage(img2)
-            self.label_img2 = Label(image=self.photoimg2, bg=frame_bg, borderwidth=0)
-            self.label_img2.place(x=510, y=270, width=50, height=50)
-        except Exception as e:
-            pass
 
         try:
             img3 = Image.open("E:/program to warr gya/codes/python/python_projects/tkinter/pass.png")
@@ -399,16 +415,18 @@ class window:
         )
         login_Button.place(x=60, y=350, width=200, height=40)
 
-        signup_Button = Button(
-            frame, text='Signup',
-            command=self.open_signup,
-            font=('times new roman', 10, 'bold'),
-            border=3, relief=RIDGE,
-            fg=btn_fg, bg=btn_bg,
-            activebackground=frame_bg,
-            activeforeground=text_fg
-        )
-        signup_Button.place(x=100, y=390, width=120, height=20)
+        # Only show signup button if no users exist
+        if not self.check_users_exist():
+            signup_Button = Button(
+                frame, text='Signup',
+                command=self.open_signup,
+                font=('times new roman', 10, 'bold'),
+                border=3, relief=RIDGE,
+                fg=btn_fg, bg=btn_bg,
+                activebackground=frame_bg,
+                activeforeground=text_fg
+            )
+            signup_Button.place(x=100, y=390, width=120, height=20)
 
         fogp_Button = Button(
             frame, text='Forget Password',
@@ -440,36 +458,61 @@ class window:
                 last_error = err
         raise last_error
 
+    def check_users_exist(self):
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(f"USE {self.db_name}")
+            cursor.execute("SELECT COUNT(*) FROM users")
+            count = cursor.fetchone()[0]
+            cursor.close()
+            conn.close()
+            return count > 0
+        except mysql.connector.Error:
+            # If any error occurs, assume no users exist
+            return False
+
+    def get_first_user(self):
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(f"USE {self.db_name}")
+            cursor.execute("SELECT * FROM users ORDER BY id LIMIT 1")
+            user_data = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            return user_data
+        except mysql.connector.Error:
+            return None
+
     def login(self):
-        username = self.user.get().strip()
         password = self.passw.get().strip()
 
-        if username == "" or password == "":
-            messagebox.showerror("Error", "Username or password field can't be empty")
+        if password == "":
+            messagebox.showerror("Error", "Password field can't be empty")
             return
 
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             cursor.execute(f"USE {self.db_name}")
-            cursor.execute("SELECT * FROM users WHERE email = %s AND password = %s", (username, password))
-            user_data = cursor.fetchone()
-            cursor.close()
-            conn.close()
-
-            if user_data:
-                messagebox.showinfo("Success", f"Welcome {user_data[1]}! Login complete")
+            
+            if self.user_info:
+                user_id = self.user_info[0]
+                user_name = self.user_info[1]
+                stored_password = self.user_info[7]
                 
-                # Close the login window
-                self.root.destroy()
-                
-                # Launch the finance tracker application
-                self.launch_finance_tracker()
+                if password == stored_password:
+                    self.root.destroy()
+                    self.launch_finance_tracker()
+                else:
+                    messagebox.showerror("Error", "Invalid password")
             else:
-                messagebox.showerror("Error", "Invalid username or password")
+                messagebox.showerror("Error", "No user account found")
 
         except mysql.connector.Error as err:
             messagebox.showerror("Database Error", f"Failed to login: {err}")
+
 
     def launch_finance_tracker(self):
         # Determine the directory of the current script
@@ -498,4 +541,12 @@ class window:
 if __name__ == "__main__":
     root = Tk()
     app = window(root)
+    
+    # Check if users exist in the database
+    if not app.check_users_exist():
+        # No users exist, redirect to signup
+        root.destroy()
+        root = Tk()
+        app = signup(root)
+    
     root.mainloop()

@@ -14,21 +14,23 @@ class DatabaseHandler:
             )
             self.cursor = self.conn.cursor()
             self.create_tables()
+            self.update_database_schema()
         except mysql.connector.Error as err:
             messagebox.showerror("Database Error", f"Failed to connect to database: {err}")
             raise
 
     def create_tables(self):
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                date DATE NOT NULL,
-                description VARCHAR(255) NOT NULL,
-                amount DECIMAL(10, 2) NOT NULL,
-                category VARCHAR(100),
-                transaction_type ENUM('income', 'expense') NOT NULL
-            )
-        """)
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            date DATE NOT NULL,
+            description VARCHAR(255) NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            category VARCHAR(100),
+            transaction_type ENUM('income', 'expense') NOT NULL,
+            receipt_path TEXT
+    )
+""")
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS budgets (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -38,29 +40,79 @@ class DatabaseHandler:
         """)
         self.conn.commit()
 
-    def add_transaction(self, date, description, amount, category, transaction_type):
+    def add_transaction(self, date, description, amount, category, transaction_type, receipt_path=None):
         try:
-            query = """INSERT INTO transactions 
-                    (date, description, amount, category, transaction_type) 
-                    VALUES (%s, %s, %s, %s, %s)"""
-            self.cursor.execute(query, (date, description, amount, category, transaction_type))
+            self.cursor.execute(
+                "INSERT INTO transactions (date, description, amount, category, transaction_type, receipt_path) VALUES (%s, %s, %s, %s, %s, %s)",
+                (date, description, amount, category, transaction_type, receipt_path)
+            )
             self.conn.commit()
             return True
-        except mysql.connector.Error as err:
-            messagebox.showerror("Database Error", f"Failed to add transaction: {err}")
+        except Exception as e:
+            print(f"Database error: {str(e)}")
             return False
 
-    def update_transaction(self, transaction_id, date, description, amount, category, transaction_type):
+    def get_transactions_by_day(self, start_date, end_date):
         try:
-            query = """UPDATE transactions 
-                    SET date = %s, description = %s, amount = %s, category = %s, transaction_type = %s
-                    WHERE id = %s"""
-            self.cursor.execute(query, (date, description, amount, category, transaction_type, transaction_id))
+            query = """
+                SELECT id, date, description, amount, category, transaction_type 
+                FROM transactions 
+                WHERE date BETWEEN %s AND %s
+                ORDER BY date
+            """
+            self.cursor.execute(query, (start_date, end_date))
+            all_transactions = self.cursor.fetchall()
+            
+            # Group transactions by date
+            transactions_by_day = {}
+            for transaction in all_transactions:
+                date_str = transaction[1].strftime('%Y-%m-%d')
+                if date_str not in transactions_by_day:
+                    transactions_by_day[date_str] = []
+                transactions_by_day[date_str].append(transaction)
+                
+            return transactions_by_day
+        except mysql.connector.Error as err:
+            messagebox.showerror("Database Error", f"Failed to fetch transactions by day: {err}")
+            return {}
+
+    def update_transaction(self, transaction_id, date, description, amount, category, transaction_type, receipt_path=None):
+        try:
+            # Explicitly handle NULL receipt_path (when receipt is removed)
+            if receipt_path is None:
+                self.cursor.execute(
+                    "UPDATE transactions SET date=%s, description=%s, amount=%s, category=%s, transaction_type=%s, receipt_path=NULL WHERE id=%s",
+                    (date, description, amount, category, transaction_type, transaction_id)
+                )
+            else:
+                self.cursor.execute(
+                    "UPDATE transactions SET date=%s, description=%s, amount=%s, category=%s, transaction_type=%s, receipt_path=%s WHERE id=%s",
+                    (date, description, amount, category, transaction_type, receipt_path, transaction_id)
+                )
             self.conn.commit()
             return True
-        except mysql.connector.Error as err:
-            messagebox.showerror("Database Error", f"Failed to update transaction: {err}")
+        except Exception as e:
+            print(f"Database error: {str(e)}")
             return False
+    def update_database_schema(self):
+        try:
+            # Check if receipt_path column exists in MySQL
+            self.cursor.execute("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'finance_tracker' 
+                AND TABLE_NAME = 'transactions' 
+                AND COLUMN_NAME = 'receipt_path'
+            """)
+            column_exists = self.cursor.fetchone()
+            
+            if not column_exists:
+                # Add the receipt_path column
+                self.cursor.execute("ALTER TABLE transactions ADD COLUMN receipt_path TEXT")
+                self.conn.commit()
+                print("Database schema updated to include receipt_path")
+        except Exception as e:
+            print(f"Failed to update database schema: {str(e)}")
 
     def get_transaction(self, transaction_id):
         try:
@@ -116,6 +168,12 @@ class DatabaseHandler:
             messagebox.showerror("Database Error", f"Failed to fetch categories: {err}")
             return []
             
+    def get_all_transactions(self):
+        query = "SELECT * FROM transactions"
+        self.cursor.execute(query)
+        return self.cursor.fetchall()
+
+    
     def delete_transaction(self, transaction_id):
         try:
             self.cursor.execute("DELETE FROM transactions WHERE id = %s", (transaction_id,))
